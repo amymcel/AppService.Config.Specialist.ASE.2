@@ -1,0 +1,468 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "EngineerAlias": {
+      "type": "string",
+      "defaultValue": "MsAlias",
+      "metadata": {
+        "description": "Engineer MS Alias"
+      }
+    }
+  },
+  "variables": {
+    "vnetName": "[concat(parameters('EngineerAlias'), '-A2-vnet1')]",
+    "vnetAddressPrefix": "10.210.0.0/16",
+    "subnetName0": "AzureFirewallSubnet",
+    "subnetAddressPrefix0": "10.210.0.0/24",
+    "subnetName1": "default",
+    "subnetAddressPrefix1": "10.210.1.0/24",
+    "subnetName2": "ase",
+    "subnetAddressPrefix2": "10.210.2.0/24",
+
+    "firewall": "[concat(parameters('EngineerAlias'), '-A2-firewall')]",
+    "firewallIP": "[concat(parameters('EngineerAlias'), '-A2-fwip')]",
+    "routetable": "[concat(parameters('EngineerAlias'), '-A2-UDR')]",
+    "NetworkSecurityGroup": "[concat(parameters('EngineerAlias'), '-A2-NSG')]",
+
+    "asename": "[concat(parameters('EngineerAlias'), '-A2-ASE')]",
+
+    "ManagementAddresses": [
+      "13.66.140.0",
+      "13.67.8.128",
+      "13.69.64.128",
+      "13.69.227.128",
+      "13.70.73.128",
+      "13.71.170.64",
+      "13.71.194.129",
+      "13.75.34.192",
+      "13.75.127.117",
+      "13.77.50.128",
+      "13.78.109.0",
+      "13.89.171.0",
+      "13.94.141.115",
+      "13.94.143.126",
+      "13.94.149.179",
+      "20.36.106.128",
+      "20.36.114.64",
+      "23.102.135.246",
+      "23.102.188.65",
+      "40.69.106.128",
+      "40.70.146.128",
+      "40.71.13.64",
+      "40.74.100.64",
+      "40.78.194.128",
+      "40.79.130.64",
+      "40.79.178.128",
+      "40.83.120.64",
+      "40.83.121.56",
+      "40.83.125.161",
+      "40.112.242.192",
+      "51.140.146.64",
+      "51.140.210.128",
+      "52.151.25.45",
+      "52.162.106.192",
+      "52.165.152.214",
+      "52.165.153.122",
+      "52.165.154.193",
+      "52.165.158.140",
+      "52.174.22.21",
+      "52.178.177.147",
+      "52.178.184.149",
+      "52.178.190.65",
+      "52.178.195.197",
+      "52.187.56.50",
+      "52.187.59.251",
+      "52.187.63.19",
+      "52.187.63.37",
+      "52.224.105.172",
+      "52.225.177.153",
+      "52.231.18.64",
+      "52.231.146.128",
+      "65.52.172.237",
+      "70.37.57.58",
+      "104.44.129.141",
+      "104.44.129.243",
+      "104.44.129.255",
+      "104.44.134.255",
+      "104.208.54.11",
+      "104.211.81.64",
+      "104.211.146.128",
+      "157.55.208.185",
+      "191.233.203.64",
+      "191.236.154.88",
+      "52.181.183.11"
+    ]
+  },
+  "resources": [
+    //vnet ----------------------------------------------------------
+    {
+      "name": "[variables('vnetName')]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-08-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('vnetAddressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetName0')]",
+            "properties": {
+              "addressPrefix": "[variables('subnetAddressPrefix0')]"
+            }
+          },
+          {
+            "name": "[variables('subnetName1')]",
+            "properties": {
+              "addressPrefix": "[variables('subnetAddressPrefix1')]"
+            }
+          },
+          {
+            "name": "[variables('subnetName2')]",
+            "properties": {
+              "addressPrefix": "[variables('subnetAddressPrefix2')]",
+              "delegations": [
+                {
+                  "name": "delegation",
+                  "properties": {
+                    "serviceName": "Microsoft.Web/hostingEnvironments"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    // firewall --------------------------------------------------------------
+    {
+      "name": "[variables('firewallIP')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2019-02-01",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "publicIPAddressVersion": "IPv4"
+      }
+    },
+    {
+      "name": "[variables('firewall')]",
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2019-12-01",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallIP'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+        //"[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName0'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "default",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName0'))]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallIP'))]"
+              }
+            }
+          }
+        ],
+        "networkRuleCollections": [
+          {
+            "name": "IpDependencies",
+            "properties": {
+              "priority": 100,
+              "action": {
+                "type": "Allow"
+              },
+              "rules": [
+                {
+                  "name": "NtpClock",
+                  "protocols": [ "Any" ],
+                  "sourceAddresses": [ "*" ],
+                  "destinationAddresses": [ "*" ],
+                  "destinationPorts": [ "123" ]
+                },
+                {
+                  "name": "Monitor",
+                  "protocols": [ "Any" ],
+                  "sourceAddresses": [ "*" ],
+                  "destinationAddresses": [ "*" ],
+                  "destinationPorts": [ "12000" ]
+                },
+                {
+                  "name": "Http",
+                  "protocols": [ "TCP" ],
+                  "sourceAddresses": [ "*" ],
+                  "destinationAddresses": [ "*" ],
+                  "destinationPorts": [ "80" ]
+                },
+                {
+                  "name": "Https",
+                  "protocols": [ "TCP" ],
+                  "sourceAddresses": [ "*" ],
+                  "destinationAddresses": [ "*" ],
+                  "destinationPorts": [ "443" ]
+                }
+              ]
+            }
+          }
+        ],
+        "applicationRuleCollections": [
+          {
+            "name": "FqdnDependencies",
+            "properties": {
+              "priority": 100,
+              "action": {
+                "type": "Allow"
+              },
+              "rules": [
+                {
+                  "name": "ASE",
+                  "sourceAddresses": [ "[variables('vnetAddressPrefix')]" ],
+                  "fqdnTags": [ "AppServiceEnvironment" ]
+                },
+                {
+                  "name": "Win",
+                  "sourceAddresses": [ "[variables('vnetAddressPrefix')]" ],
+                  "fqdnTags": [ "WindowsUpdate" ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    //Network Security Group --------------------------------------------------------------
+    {
+      "name": "[variables('NetworkSecurityGroup')]",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2020-05-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "Inbound-Management",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "454-455",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "Inbound-HTTP",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 120,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "Inbound-HTTPS",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 130,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "Outbound-443",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "Outbound-DB1",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "1433",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 120,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "Outbound-DB2",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "11000-11999",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 130,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "Outbound-DB3",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "14000-14999",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 140,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "Outbound-DNS",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "53",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 150,
+              "direction": "Outbound"
+            }
+          },
+          {
+            "name": "Outbound-80",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 160,
+              "direction": "Outbound"
+            }
+          }
+        ]
+      }
+    },
+    //User defined route --------------------------------------------------------------
+    {
+      "name": "[variables('routetable')]",
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2020-08-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "Copy": [
+          {
+            "name": "routes",
+            "count": "[length(variables('ManagementAddresses'))]",
+            "input": {
+              "name": "[concat('IP-Manage-', copyIndex('routes'))]",
+              "properties": {
+                "addressPrefix": "[concat(variables('ManagementAddresses')[copyIndex('routes')],'/32')]",
+                "nextHopType": "Internet"
+              }
+            }
+          }
+        ]
+      },
+      "resources": [
+        //{
+        //  "name": "[concat(variables('routetable'), '/Firewall')]",
+        //  "type": "Microsoft.Network/routeTables/routes",
+        //  "apiVersion": "2020-07-01",
+        //  "dependsOn": [
+        //    "[resourceId('Microsoft.Network/azureFirewalls', variables('firewall'))]",
+        //    "[resourceId('Microsoft.Network/routeTables', variables('routetable'))]"
+        //  ],
+        //  "properties": {
+        //    "addressPrefix": "0.0.0.0/0",
+        //    "nextHopType": "VirtualAppliance",
+        //    "nextHopIpAddress": "[reference(resourceId('Microsoft.Network/azureFirewalls', variables('firewall'))).IpConfigurations.PrivateIpAddress]"
+        //  }
+        //}
+      ]
+    },
+    {
+      "name": "updateSubnet",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-06-01",
+      "resourceGroup": "[resourceGroup().name]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NetworkSecurityGroup'))]",
+        "[resourceId('Microsoft.Network/routeTables', variables('routetable'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": [
+            {
+              "name": "[concat(variables('vnetName'), '/', variables('subnetName2'))]",
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2020-08-01",
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "addressPrefix": "[variables('subnetAddressPrefix2')]",
+                "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NetworkSecurityGroup'))]"
+                },
+                "routeTable": {
+                  "id": "[resourceId('Microsoft.Network/routeTables', variables('routetable'))]"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+    ////ASE ----------------------------------------------------------
+    //{
+    //  "name": "[variables('aseName')]",
+    //  "type": "Microsoft.Web/hostingEnvironments",
+    //  "apiVersion": "2018-02-01",
+    //  "kind": "ASEV2",
+    //  "location": "[resourceGroup().location]",
+    //  "dependsOn": [
+    //    "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+    //    "[resourceId('Microsoft.Network/azureFirewalls', variables('firewall'))]",
+    //    "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NetworkSecurityGroup'))]",
+    //    "[resourceId('Microsoft.Network/routeTables', variables('routetable'))]"
+    //  ],
+    //  "properties": {
+    //    "name": "[variables('aseName')]",
+    //    "location": "[resourceGroup().location]",
+    //    "ipSslAddressCount": 0,
+    //    "internalLoadBalancingMode": 3,
+    //    "virtualNetwork": {
+    //      "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName2'))]"
+    //    }
+    //  }
+    //}
+  ]
+}
